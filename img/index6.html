@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TLECALLI | Premium Delivery</title>
+    
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Playfair+Display:wght@700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        :root {
+            --primary: #A64B2A; 
+            --primary-light: #fdf2f0;
+            --accent: #E67E22;
+            --bg: #F8F9FA;
+            --white: #FFFFFF;
+            --text: #2D3436;
+            --text-light: #636E72;
+            --shadow: 0 10px 30px rgba(0,0,0,0.08);
+            --radius: 24px;
+        }
+
+        * { margin: 0; padding: 0; box-sizing: border-box; outline: none; -webkit-tap-highlight-color: transparent; }
+        html { scroll-behavior: smooth; }
+        body { font-family: 'Outfit', sans-serif; background-color: var(--bg); color: var(--text); overflow-x: hidden; }
+
+        /* --- Location Screen Corregida --- */
+        #location-screen { position: fixed; inset: 0; background: rgba(0,0,0,0.6); backdrop-filter: blur(8px); z-index: 9999; display: flex; align-items: center; justify-content: center; padding: 20px; }
+        .location-card { background: var(--white); width: 100%; max-width: 450px; padding: 30px; border-radius: var(--radius); box-shadow: 0 20px 50px rgba(0,0,0,0.2); text-align: center; position: relative; z-index: 10000; }
+        #map { height: 200px; width: 100%; border-radius: 15px; margin: 15px 0; background: #eee; }
+
+        /* --- Navigation --- */
+        .fixed-top { position: sticky; top: 0; z-index: 1000; background: var(--white); box-shadow: var(--shadow); }
+        header { display: flex; justify-content: space-between; align-items: center; padding: 15px 6%; }
+        .brand { font-family: 'Playfair Display', serif; font-size: 1.6rem; color: var(--primary); }
+        .search-area { padding: 5px 6% 15px; }
+        #search-input { width: 100%; padding: 12px 20px; border-radius: 50px; border: 1px solid #eee; background: #F1F3F4; }
+
+        .categories-nav { display: flex; overflow-x: auto; padding: 10px 6% 15px; gap: 10px; background: var(--bg); scrollbar-width: none; }
+        .categories-nav::-webkit-scrollbar { display: none; }
+        .cat-pill { background: var(--white); padding: 10px 22px; border-radius: 30px; white-space: nowrap; font-weight: 600; color: var(--text-light); text-decoration: none; transition: 0.3s; font-size: 0.9rem; }
+        .cat-pill.active { background: var(--primary); color: var(--white); transform: scale(1.05); }
+
+        .section-title { scroll-margin-top: 210px; margin: 40px 6% 20px; font-family: 'Playfair Display', serif; font-size: 1.8rem; color: var(--primary); }
+        .container { padding: 0 6% 60px; }
+        .menu-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 20px; }
+        
+        .food-card { background: var(--white); border-radius: var(--radius); display: flex; flex-direction: column; padding: 12px; gap: 12px; transition: 0.3s; border: 1px solid rgba(0,0,0,0.03); }
+        .food-img-container { width: 100%; height: 160px; }
+        .food-img { width: 100%; height: 100%; object-fit: cover; border-radius: 18px; background: #f0f0f0; }
+        
+        .btn-add { background: var(--primary); color: white; border: none; width: 35px; height: 35px; border-radius: 50%; cursor: pointer; }
+        .cart-overlay { position: fixed; top: 0; right: -100%; width: 100%; max-width: 400px; height: 100%; background: var(--white); z-index: 2000; transition: 0.4s; display: flex; flex-direction: column; }
+        .cart-overlay.open { right: 0; }
+        .btn-main { background: var(--primary); color: white; border: none; width: 100%; padding: 18px; border-radius: 18px; font-weight: 700; cursor: pointer; }
+        #toast { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); background: #333; color: white; padding: 12px 25px; border-radius: 50px; display: none; z-index: 9999; }
+    </style>
+</head>
+<body>
+
+    <div id="location-screen">
+        <div class="location-card">
+            <h2 style="font-family:'Playfair Display'; color:var(--primary)">Bienvenido</h2>
+            <p>Detecta tu ubicación para calcular el envío</p>
+            <div id="map"></div>
+            <button class="btn-main" onclick="detectarGPS()" style="margin-bottom:10px; background:#f0f0f0; color:#333">📍 Usar GPS</button>
+            <input type="text" id="manual-addr" placeholder="O escribe tu dirección..." style="width:100%; padding:15px; border-radius:15px; border:1px solid #eee; margin-bottom:15px">
+            <button class="btn-main" onclick="entrar()">Ver Menú</button>
+        </div>
+    </div>
+
+    <div class="fixed-top">
+        <header>
+            <div class="brand">TLECALLI</div>
+            <button onclick="toggleCart()" style="background:none; border:none; font-size:1.5rem; cursor:pointer">
+                🛒 <span id="cart-count" style="background:var(--accent); color:white; font-size:0.7rem; padding:3px 7px; border-radius:50%">0</span>
+            </button>
+        </header>
+        <div class="search-area"><input type="text" id="search-input" placeholder="¿Qué se te antoja?" oninput="filtrar()"></div>
+        <div class="categories-nav" id="cat-nav"></div>
+    </div>
+
+    <main class="container">
+        <div id="populares-section"><h2 class="section-title">🔥 Los Favoritos</h2><div class="menu-grid" id="pop-grid"></div></div>
+        <div id="menu-cont"></div>
+    </main>
+
+    <div class="cart-overlay" id="cart-panel">
+        <div style="padding:25px; border-bottom:1px solid #eee; display:flex; justify-content:space-between">
+            <h3>Mi Pedido</h3><button onclick="toggleCart()" style="border:none; background:none; font-size:1.2rem">✕</button>
+        </div>
+        <div class="cart-body" id="cart-items" style="flex:1; overflow-y:auto; padding:20px"></div>
+        <div style="padding:25px; background:#fafafa; border-top:1px solid #eee">
+            <div id="free-ship-msg" class="free-ship-banner ship-pending"></div>
+            <div style="display:flex; justify-content:space-between; margin-bottom:5px"><span>Envío</span><span id="envio-val">$0</span></div>
+            <div style="display:flex; justify-content:space-between; font-weight:700; font-size:1.3rem; color:var(--primary); margin-bottom:15px"><span>Total</span><span id="total-val">$0</span></div>
+            <button class="btn-main" onclick="pedir()">Confirmar Pedido</button>
+        </div>
+    </div>
+
+    <div id="toast"></div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const NEGOCIO = [19.4326, -99.1332];
+        let map, cart = JSON.parse(localStorage.getItem('tlecalli_cart')) || [];
+
+        // Menú con los 75 platillos integrados
+        const menuData = [
+            { cat: "Tacos", items: [
+                { id:1, name:"Tacos al Pastor", price:65, pop:true, img:"img/tacos-pastor.webp" },
+                { id:2, name:"Tacos de Suadero", price:65, pop:true, img:"img/tacos-suadero.webp" },
+                { id:3, name:"Tacos de longaniza", price:65, img:"img/tacos-longaniza.webp" },
+                { id:43, name:"Tacos Campechanos", price:65, img:"tacoscampechanos.webp" },
+                { id:44, name:"Tacos de Bistec", price:70, img:"" },
+                { id:45, name:"Tacos de Tripa", price:75, img:"img/tacos-tripa.webp" }
+            ]},
+            { cat: "Antojitos", items: [
+                { id:4, name:"Gorditas de chicharron", price:50, pop:true, img:"img/gorditas-chicharron.webp" },
+                { id:5, name:"Quesadillas de queso", price:40, img:"img/quesadillas-queso.webp" },
+                { id:6, name:"Quesadillas de pollo", price:40, img:"img/quesadillas-pollo.webp" },
+                { id:7, name:"Quesadillas de chicharron", price:40, img:"img/quesadillas-chicharron.webp" },
+                { id:46, name:"Quesadillas de Huitlacoche", price:45, img:"img/quesa-huitla.webp" },
+                { id:47, name:"Quesadillas de Flor", price:45, img:"img/quesa-flor.webp" },
+                { id:8, name:"Sopes de pollo", price:55, img:"img/sopes-pollo.webp" },
+                { id:48, name:"Sopes de Chorizo", price:55, img:"img/sopes-chorizo.webp" },
+                { id:9, name:"Pambazos", price:70, img:"img/pambazos.webp" },
+                { id:10, name:"Tostadas de tinga", price:60, img:"img/tostadas-tinga.webp" },
+                { id:49, name:"Tostadas de Pata", price:60, img:"img/tostadas-pata.webp" },
+                { id:11, name:"Flautas de pollo", price:70, img:"img/flautas-pollo.webp" },
+                { id:12, name:"Sincronizadas", price:50, img:"img/sincronizadas.webp" },
+                { id:13, name:"Molletes", price:45, img:"img/molloetes.webp" },
+                { id:14, name:"Empanadas", price:55, img:"img/empanadas.webp" }
+            ]},
+            { cat: "Tortas", items: [
+                { id:50, name:"Torta Milanesa", price:65, pop:true, img:"img/tortamilanesa.webp" },
+                { id:51, name:"Torta Jamón", price:55, img:"img/torta-jamon.webp" },
+                { id:52, name:"Torta Cubana", price:85, img:"img/torta-cubana.webp" },
+                { id:53, name:"Torta Hawaiana", price:70, img:"img/torta-hawa.webp" },
+                { id:54, name:"Torta de Pastor", price:75, img:"img/torta-pastor.webp" },
+                { id:55, name:"Torta de Suadero", price:75, img:"img/torta-suadero.webp" }
+            ]},
+            { cat: "Platos Fuertes", items: [
+                { id:15, name:"Pozole", price:90, pop:true, img:"img/pozo-le.webp" },
+                { id:16, name:"Huaraches", price:75, img:"img/huaraches.webp" },
+                { id:56, name:"Huarache con Costilla", price:95, img:"img/huarache-costilla.webp" },
+                { id:17, name:"Enchiladas verdes", price:80, img:"img/enchiladas-verdes.webp" },
+                { id:57, name:"Enchiladas Rojas", price:80, img:"img/enchiladas-rojas.webp" },
+                { id:18, name:"Chiles en Nogada", price:95, img:"img/chiles-nogada.webp" },
+                { id:19, name:"Menudo", price:85, img:"img/menudo.webp" },
+                { id:20, name:"Barbacoa", price:95, img:"img/barbacoa.webp" },
+                { id:21, name:"Carne Asada", price:90, img:"img/carne-asada.webp" },
+                { id:58, name:"Pechuga a la Plancha", price:85, img:"img/pechuga.webp" },
+                { id:59, name:"Milanesa de Res", price:95, img:"img/milanesa-res.webp" },
+                { id:22, name:"Cemitas", price:75, img:"img/cemitas.webp" },
+                { id:23, name:"Tlayudas", price:80, img:"img/tlayudas.webp" },
+                { id:24, name:"Mole con pollo", price:88, img:"img/mole-pollo.webp" },
+                { id:60, name:"Alambre de Res", price:115, img:"img/alambre-res.webp" },
+                { id:61, name:"Alambre de Pastor", price:110, img:"img/alambre-pastor.webp" },
+                { id:33, name:"Quesabirrias", price:85, pop:true, img:"img/quesa-birrias.webp" }
+            ]},
+            { cat: "Desayunos", items: [
+                { id:25, name:"Chilaquiles verdes", price:70, img:"img/chilaquiles-verdes.webp" },
+                { id:26, name:"Chilaquiles rojos", price:70, img:"img/chilaquiles-rojos.webp" },
+                { id:62, name:"Chilaquiles con Cecina", price:95, img:"img/chila-cecina.webp" },
+                { id:27, name:"Huevos Rancheros", price:60, img:"img/huevos-rancheros.webp" },
+                { id:63, name:"Huevos a la Mexicana", price:60, img:"img/huevos-mex.webp" },
+                { id:64, name:"Huevos con Jamón", price:60, img:"img/huevos-jamon.webp" }
+            ]},
+            { cat: "Caldos", items: [
+                { id:28, name:"Caldo de Res", price:85, img:"img/caldo-res.webp" },
+                { id:29, name:"Caldo de pollo", price:85, img:"img/caldo-pollo.webp" },
+                { id:65, name:"Sopa de Azteca", price:60, img:"img/sopa-azteca.webp" },
+                { id:66, name:"Sopa de Fideo", price:45, img:"img/sopa-fideo.webp" }
+            ]},
+            { cat: "Tamales", items: [
+                { id:30, name:"Tamales de dulce", price:30, img:"img/tamales-dulce.webp" },
+                { id:31, name:"Tamales de verde", price:30, img:"img/tamales-verde.webp" },
+                { id:32, name:"Tamales de mole", price:30, img:"img/tamales-mole.webp" },
+                { id:67, name:"Tamales de Rajas", price:30, img:"img/tamales-rajas.webp" },
+                { id:68, name:"Guajolota (Torta de Tamal)", price:45, img:"img/guajolota.webp" }
+            ]},
+            { cat: "Postres", items: [
+                { id:69, name:"Flan Napolitano", price:40, img:"img/flan.webp" },
+                { id:70, name:"Arroz con Leche", price:35, img:"img/arroz-leche.webp" },
+                { id:71, name:"Fresas con Crema", price:55, img:"img/fresas.webp" },
+                { id:72, name:"Gelatina de Mosaico", price:30, img:"img/gelatina.webp" }
+            ]},
+            { cat: "Bebidas", items: [
+                { id:34, name:"Horchata", price:35, img:"img/agua-de-horchata.webp" },
+                { id:35, name:"Jamaica", price:35, img:"img/agua-jamaica.webp" },
+                { id:36, name:"Tamarindo", price:35, img:"img/agua-tamarindo.webp" },
+                { id:37, name:"Limón", price:30, img:"img/agua-limon.webp" },
+                { id:38, name:"Refresco Coca Cola", price:30, img:"img/coca-cola.webp" },
+                { id:39, name:"Refresco Coca Cola zero", price:30, img:"img/coca-zero.webp" },
+                { id:40, name:"Refresco Pepsi", price:30, img:"img/pepsi.webp" },
+                { id:73, name:"Agua de Piña", price:35, img:"img/agua-pina.webp" },
+                { id:74, name:"Jugo de Naranja", price:40, img:"img/jugo-naranja.webp" },
+                { id:41, name:"Café", price:35, img:"img/cafe.webp" },
+                { id:42, name:"Chocolate caliente", price:35, img:"img/chocolate-caliente.webp" },
+                { id:75, name:"Té de Manzanilla", price:25, img:"img/te.webp" }
+            ]}
+        ];
+
+        window.onload = () => {
+            try {
+                map = L.map('map').setView(NEGOCIO, 13);
+                L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+                L.marker(NEGOCIO).addTo(map);
+            } catch(e) { console.log("Error cargando mapa"); }
+            renderMenu();
+            renderCart();
+            setupScroll();
+        };
+
+        function entrar() {
+            // Fuerza el cierre de la pantalla de carga para que no te quedes trabado
+            document.getElementById('location-screen').style.visibility = 'hidden';
+            document.getElementById('location-screen').style.opacity = '0';
+            setTimeout(() => {
+                document.getElementById('location-screen').style.display = 'none';
+            }, 300);
+        }
+
+        function detectarGPS() {
+            if (navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(pos => {
+                    const userCoords = [pos.coords.latitude, pos.coords.longitude];
+                    if(map) {
+                        map.setView(userCoords, 16);
+                        L.marker(userCoords).addTo(map).bindPopup("Tu ubicación").openPopup();
+                    }
+                    showToast("Ubicación fijada 📍");
+                }, () => showToast("No se pudo obtener GPS"));
+            }
+        }
+
+        function renderMenu(f = "") {
+            const cont = document.getElementById('menu-cont'), nav = document.getElementById('cat-nav'), pop = document.getElementById('pop-grid');
+            cont.innerHTML = ""; nav.innerHTML = ""; pop.innerHTML = "";
+            menuData.forEach(c => {
+                const items = c.items.filter(i => i.name.toLowerCase().includes(f.toLowerCase()));
+                if(items.length) {
+                    nav.innerHTML += `<a href="#${c.cat}" class="cat-pill" id="p-${c.cat}">${c.cat}</a>`;
+                    let h = `<h2 class="section-title" id="${c.cat}">${c.cat}</h2><div class="menu-grid">`;
+                    items.forEach(i => {
+                        const card = `<div class="food-card"><div class="food-img-container"><img src="${i.img}" class="food-img" loading="lazy"></div><div class="food-info"><h3>${i.name}</h3><div style="display:flex; justify-content:space-between; align-items:center; margin-top:auto"><b>$${i.price}</b><button class="btn-add" onclick="add(${i.id})">+</button></div></div></div>`;
+                        h += card;
+                        if(i.pop && !f) pop.innerHTML += card;
+                    });
+                    cont.innerHTML += h + `</div>`;
+                }
+            });
+        }
+
+        function add(id) {
+            let p; menuData.forEach(c => c.items.forEach(i => { if(i.id==id) p=i }));
+            const ex = cart.find(x => x.id==id);
+            if(ex) ex.qty++; else cart.push({...p, qty:1});
+            localStorage.setItem('tlecalli_cart', JSON.stringify(cart));
+            renderCart();
+            showToast("Agregado ✅");
+        }
+
+        function renderCart() {
+            const cont = document.getElementById('cart-items'), msg = document.getElementById('free-ship-msg');
+            cont.innerHTML = ""; let sub = 0, count = 0;
+            cart.forEach(i => {
+                sub += i.price*i.qty; count += i.qty;
+                cont.innerHTML += `<div style="display:flex; justify-content:space-between; margin-bottom:15px"><div><b>${i.name}</b><br>$${i.price*i.qty}</div><div style="background:#f1f3f4; padding:5px 10px; border-radius:20px"><button onclick="changeQty(${i.id},-1)">-</button><span style="margin:0 10px">${i.qty}</span><button onclick="changeQty(${i.id},1)">+</button></div></div>`;
+            });
+            let ship = sub >= 150 || sub === 0 ? 0 : 25;
+            document.getElementById('cart-count').innerText = count;
+            document.getElementById('envio-val').innerText = `$${ship}`;
+            document.getElementById('total-val').innerText = `$${sub + ship}`;
+        }
+
+        function changeQty(id, d) {
+            const i = cart.find(x => x.id==id);
+            i.qty += d;
+            if(i.qty <= 0) cart = cart.filter(x => x.id!=id);
+            localStorage.setItem('tlecalli_cart', JSON.stringify(cart));
+            renderCart();
+        }
+
+        function pedir() {
+            if(!cart.length) return;
+            const tot = document.getElementById('total-val').innerText;
+            const folio = Math.floor(Math.random() * 9000) + 1000;
+            let text = `*TLECALLI - PEDIDO #${folio}*%0A--------------------------------%0A`;
+            cart.forEach(i => text += `• ${i.name} x${i.qty}%0A`);
+            text += `--------------------------------%0A*TOTAL:* ${tot}%0A%0A_Adjunte su comprobante aquí abajo 👇_`;
+            window.open(`https://wa.me/525574084429?text=${text}`);
+        }
+
+        function toggleCart() { document.getElementById('cart-panel').classList.toggle('open'); }
+        function filtrar() { renderMenu(document.getElementById('search-input').value); }
+        function showToast(m) { const t = document.getElementById('toast'); t.innerText=m; t.style.display='block'; setTimeout(()=>t.style.display='none',2000); }
+        function setupScroll() {
+            window.onscroll = () => {
+                let cur = "";
+                document.querySelectorAll('.section-title').forEach(s => { if(pageYOffset >= s.offsetTop - 250) cur = s.id; });
+                document.querySelectorAll('.cat-pill').forEach(p => { p.classList.remove('active'); if(p.id == `p-${cur}`) p.classList.add('active'); });
+            };
+        }
+    </script>
+</body>
+</html>
